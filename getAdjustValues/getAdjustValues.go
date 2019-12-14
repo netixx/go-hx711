@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/MichaelS11/go-hx711"
+	hx711 "github.com/netixx/go-hx711"
 )
 
 func main() {

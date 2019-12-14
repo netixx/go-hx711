@@ -2,8 +2,8 @@
 
 Golang HX711 interface using periph.io driver
 
-[![GoDoc Reference](https://godoc.org/github.com/MichaelS11/go-hx711?status.svg)](http://godoc.org/github.com/MichaelS11/go-hx711)
-[![Go Report Card](https://goreportcard.com/badge/github.com/MichaelS11/go-hx711)](https://goreportcard.com/report/github.com/MichaelS11/go-hx711)
+[![GoDoc Reference](https://godoc.org/github.com/netixx/go-hx711?status.svg)](http://godoc.org/github.com/netixx/go-hx711)
+[![Go Report Card](https://goreportcard.com/badge/github.com/netixx/go-hx711)](https://goreportcard.com/report/github.com/netixx/go-hx711)
 
 ## Please note
 
@@ -20,7 +20,7 @@ Side note, in my testing using 3V input had better consistency then using a 5V i
 
 ## Get
 
-go get github.com/MichaelS11/go-hx711
+go get github.com/netixx/go-hx711
 
 
 ## Simple test to make sure scale is working
@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MichaelS11/go-hx711"
+	"github.com/netixx/go-hx711"
 )
 
 func main() {
@@ -87,7 +87,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/MichaelS11/go-hx711"
+	"github.com/netixx/go-hx711"
 )
 
 func main() {
@@ -102,7 +102,7 @@ func main() {
 		fmt.Println("NewHx711 error:", err)
 		return
 	}
-  
+
 	// SetGain default is 128
 	// Gain of 128 or 64 is input channel A, gain of 32 is input channel B
 	// hx711.SetGain(128)
@@ -120,7 +120,7 @@ func main() {
 or
 
 ```
-go build -v -o getAdjustValues github.com/MichaelS11/go-hx711/getAdjustValues
+go build -v -o getAdjustValues github.com/netixx/go-hx711/getAdjustValues
 ```
 
 ## Simple program to get weight
@@ -134,7 +134,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MichaelS11/go-hx711"
+	"github.com/netixx/go-hx711"
 )
 
 func main() {
@@ -175,7 +175,7 @@ func main() {
 
 ## ReadDataMedianThenMovingAvgs
 
-The function ReadDataMedianThenMovingAvgs gets the number of reading you pass in, in the below example, 11 readings. Then it finds the median reading, adjusts that number with AdjustZero and AdjustScale. Then it will do a rolling average of the last readings in the weights slice up to the number of averages passed in, which in the below example is 5 averages. 
+The function ReadDataMedianThenMovingAvgs gets the number of reading you pass in, in the below example, 11 readings. Then it finds the median reading, adjusts that number with AdjustZero and AdjustScale. Then it will do a rolling average of the last readings in the weights slice up to the number of averages passed in, which in the below example is 5 averages.
 
 ```go
 previousReadings := []float64{}
@@ -202,7 +202,7 @@ go hx711.BackgroundReadMovingAvgs(11, 8, &movingAvg, &stop, stopped)
 time.sleep(time.Second)
 
 // moving average
-fmt.Println(movingAvg) 
+fmt.Println(movingAvg)
 
 // when done set stop to true to quit BackgroundReadMovingAvgs
 stop = true

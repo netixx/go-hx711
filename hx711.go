@@ -29,17 +29,25 @@ func NewHx711(clockPinName string, dataPinName string) (*Hx711, error) {
 	if hx711.clockPin == nil {
 		return nil, fmt.Errorf("clockPin is nill")
 	}
+	err := hx711.clockPin.Out(gpio.Low)
+	if err != nil {
+		return nil, fmt.Errorf("Error setting clockPin to low %w", err)
+	}
 
 	hx711.dataPin = gpioreg.ByName(dataPinName)
 	if hx711.dataPin == nil {
 		return nil, fmt.Errorf("dataPin is nill")
 	}
 
-	err := hx711.dataPin.In(gpio.PullNoChange, gpio.FallingEdge)
+	err = hx711.dataPin.In(gpio.PullNoChange, gpio.FallingEdge)
 	if err != nil {
-		return nil, fmt.Errorf("dataPin setting to in error: %v", err)
+		return nil, fmt.Errorf("dataPin setting to in error: %w", err)
 	}
 
+	err = hx711.applyGain()
+	if err != nil {
+		return nil, fmt.Errorf("error applying gain %w", err)
+	}
 	return hx711, nil
 }
 
@@ -47,7 +55,7 @@ func NewHx711(clockPinName string, dataPinName string) (*Hx711, error) {
 // Gain of 128 or 64 is input channel A, gain of 32 is input channel B.
 // Default gain is 128.
 // Note change only takes affect after one reading.
-func (hx711 *Hx711) SetGain(gain int) {
+func (hx711 *Hx711) SetGain(gain int) error {
 	switch gain {
 	case 128:
 		hx711.numEndPulses = 1
@@ -58,17 +66,43 @@ func (hx711 *Hx711) SetGain(gain int) {
 	default:
 		hx711.numEndPulses = 1
 	}
+	err := hx711.applyGain()
+	if err != nil {
+		return fmt.Errorf("Error while reading data after gain change to %d: %w", gain, err)
+	}
+	return nil
+}
+
+func (hx711 *Hx711) applyGain() error {
+	var err error
+	for i := 0; i < 5; i++ {
+		// read data to trigger channel change
+		_, err = hx711.ReadDataRaw()
+		if err == nil {
+			// sleep for at least 400ms for settling time after channel change
+			// sleep is actually done in waitForDataReady, no need to sleep here
+			// time.Sleep(410 * time.Millisecond)
+			return nil
+		}
+	}
+	return fmt.Errorf("Error while reading data after 5 tries while applying gain %w", err)
 }
 
 // setClockHighThenLow sets clock pin high then low
 func (hx711 *Hx711) setClockHighThenLow() error {
+	startTime := time.Now()
 	err := hx711.clockPin.Out(gpio.High)
 	if err != nil {
-		return fmt.Errorf("set clock pin to high error: %v", err)
+		return fmt.Errorf("set clock pin to high error: %w", err)
 	}
 	err = hx711.clockPin.Out(gpio.Low)
 	if err != nil {
-		return fmt.Errorf("set clock pin to low error: %v", err)
+		return fmt.Errorf("set clock pin to low error: %w", err)
+	}
+	// add margin to account for calls around high/low ?
+	if d := time.Now().Sub(startTime); d >= 60*time.Microsecond {
+		defer hx711.applyGain()
+		return fmt.Errorf("clock was high for too long: %v", d)
 	}
 	return nil
 }
@@ -78,16 +112,20 @@ func (hx711 *Hx711) setClockHighThenLow() error {
 func (hx711 *Hx711) Reset() error {
 	err := hx711.clockPin.Out(gpio.Low)
 	if err != nil {
-		return fmt.Errorf("set clock pin to low error: %v", err)
+		return fmt.Errorf("set clock pin to low error: %w", err)
 	}
 	err = hx711.clockPin.Out(gpio.High)
 	if err != nil {
-		return fmt.Errorf("set clock pin to high error: %v", err)
+		return fmt.Errorf("set clock pin to high error: %w", err)
 	}
 	time.Sleep(70 * time.Microsecond)
 	err = hx711.clockPin.Out(gpio.Low)
 	if err != nil {
-		return fmt.Errorf("set clock pin to low error: %v", err)
+		return fmt.Errorf("set clock pin to low error: %w", err)
+	}
+	err = hx711.applyGain()
+	if err != nil {
+		return fmt.Errorf("Error while apply gain after reset %w", err)
 	}
 	return nil
 }
@@ -97,7 +135,7 @@ func (hx711 *Hx711) Reset() error {
 func (hx711 *Hx711) Shutdown() error {
 	err := hx711.clockPin.Out(gpio.High)
 	if err != nil {
-		return fmt.Errorf("set clock pin to high error: %v", err)
+		return fmt.Errorf("set clock pin to high error: %w", err)
 	}
 	return nil
 }
@@ -106,7 +144,7 @@ func (hx711 *Hx711) Shutdown() error {
 func (hx711 *Hx711) waitForDataReady() error {
 	err := hx711.clockPin.Out(gpio.Low)
 	if err != nil {
-		return fmt.Errorf("set clock pin to low error: %v", err)
+		return fmt.Errorf("set clock pin to low error: %w", err)
 	}
 
 	var level gpio.Level
@@ -131,16 +169,18 @@ func (hx711 *Hx711) waitForDataReady() error {
 func (hx711 *Hx711) ReadDataRaw() (int, error) {
 	err := hx711.waitForDataReady()
 	if err != nil {
-		return 0, fmt.Errorf("waitForDataReady error: %v", err)
+		return 0, fmt.Errorf("waitForDataReady error: %w", err)
 	}
 
 	var level gpio.Level
 	var data int
 	for i := 0; i < 24; i++ {
+		// respect minimal interval of 0.2us, typ. of 1us between rise
 		err = hx711.setClockHighThenLow()
 		if err != nil {
-			return 0, fmt.Errorf("setClockHighThenLow error: %v", err)
+			return 0, fmt.Errorf("setClockHighThenLow error: %w", err)
 		}
+		// max raise time is 0.1us after clock high, so wait at least for that long before read
 
 		level = hx711.dataPin.Read()
 		data = data << 1
@@ -152,7 +192,7 @@ func (hx711 *Hx711) ReadDataRaw() (int, error) {
 	for i := 0; i < hx711.numEndPulses; i++ {
 		err = hx711.setClockHighThenLow()
 		if err != nil {
-			return 0, fmt.Errorf("setClockHighThenLow error: %v", err)
+			return 0, fmt.Errorf("setClockHighThenLow error: %w", err)
 		}
 	}
 
@@ -190,7 +230,7 @@ func (hx711 *Hx711) readDataMedianRaw(numReadings int, stop *bool) (int, error) 
 	}
 
 	if len(datas) < 1 {
-		return 0, fmt.Errorf("no data, last err: %v", err)
+		return 0, fmt.Errorf("no data, last err: %w", err)
 	}
 
 	sort.Ints(datas)
@@ -204,15 +244,15 @@ func (hx711 *Hx711) readDataMedianRaw(numReadings int, stop *bool) (int, error) 
 func (hx711 *Hx711) ReadDataMedianRaw(numReadings int) (int, error) {
 	var data int
 
-	err := hx711.Reset()
-	if err != nil {
-		return 0, fmt.Errorf("Reset error: %v", err)
-	}
+	// err := hx711.Reset()
+	// if err != nil {
+	// 	return 0, fmt.Errorf("Reset error: %v", err)
+	// }
 
 	stop := false
-	data, err = hx711.readDataMedianRaw(numReadings, &stop)
+	data, err := hx711.readDataMedianRaw(numReadings, &stop)
 
-	hx711.Shutdown()
+	// hx711.Shutdown()
 
 	return data, err
 }
